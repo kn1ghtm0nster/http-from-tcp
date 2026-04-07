@@ -2,19 +2,30 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
+	"net"
 )
 
 
 func main () {
-	byteData, err := os.Open("messages.txt")
+	listener, err := net.Listen("tcp", ":42069")
 	if err != nil {
-		fmt.Printf("Error opening file: %v\n", err)
-		return
+		log.Fatalf("ERROR CREATING LISTENER: %v", err)
 	}
 
-	lines := getLinesChannel(byteData)
-	for line := range lines {
-		fmt.Printf("read: %s\n", line)
+	defer listener.Close()
+
+	for {
+		connection, err := listener.Accept()
+		if err != nil {
+			log.Fatalf("ERROR ACCEPTING CONNECTION: %v", err)
+		}
+		
+		fmt.Println("NEW CONNECTION ACCEPTED!")
+		linesCh := getLinesChannel(connection)
+		for line := range linesCh {
+			fmt.Println(line)
+		}
+		fmt.Println("CONNECTION CLOSED!")
 	}
-}	
+}
