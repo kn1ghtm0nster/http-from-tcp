@@ -1,14 +1,25 @@
 package request
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"strings"
 	"unicode"
 )
 
+const bufferSize = 8
+
+const (
+	requestStateInitialized requestState = iota
+	requestStateDone
+)
+
+type requestState int
+
 type Request struct {
 	RequestLine RequestLine
+	state       requestState
 }
 
 type RequestLine struct {
@@ -18,55 +29,97 @@ type RequestLine struct {
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	byteData, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
+	buf := make([]byte, bufferSize)
+	readToIndex := 0
+	req := &Request{
+		state: requestStateInitialized,
 	}
 
-	// parsed data here via custom parseRequestLine function
-	requestLine, err := parseRequestLine(byteData)
-	if err != nil {
-		return nil, err
+	for req.state != requestStateDone {
+		// if buffer is full, create buffer twice the size and copy old ddata into new slice
+		if readToIndex == len(buf) {
+			newBuf := make([]byte, len(buf)*2)
+			copy(newBuf, buf)
+			buf = newBuf
+		}
+		// read from the reader into the buffer starting at the current read index
+		nextIdx, err := reader.Read(buf[readToIndex:])
+		if err != nil {
+			if err == io.EOF {
+				req.state = requestStateDone
+				break
+			}
+			return nil, err
+		}
+		// update the index of how many bytes have been read into the buffer
+		// and then attempt to parse the data that has been read so far
+		readToIndex += nextIdx
+		parsedBytes, err := req.parse(buf[:readToIndex])
+		if err != nil {
+			return nil, err
+		}
+		// remove the data that was parsed from the buffer and copy to a new slice
+		copy(buf, buf[parsedBytes:readToIndex])
+		readToIndex -= parsedBytes
 	}
-
-	return &Request{
-		RequestLine: requestLine,
-	}, nil
+	return req, nil
 }
 
-func parseRequestLine(data []byte) (RequestLine, error) {
-	parts := strings.Split(string(data), "\r\n")
+func parseRequestLine(data []byte) (RequestLine, int, error) {
+	idx := bytes.Index(data, []byte("\r\n"))
 	// discard everything after the first line
-	if len(parts) == 0 {
-		return RequestLine{}, errors.New("empty request")
+	if idx == -1 {
+		return RequestLine{}, 0, nil
 	}
 
 	// separate out the request-line into parts by spaces
-	requestLineParts := strings.Split(parts[0], " ")
+	requestLineParts := strings.Split(string(data[:idx]), " ")
 	if len(requestLineParts) != 3 {
-		return RequestLine{}, errors.New("invalid request format")
+		return RequestLine{}, 0, errors.New("invalid request format")
 	}
 
 	method := requestLineParts[0]
 	if method == "" {
-		return RequestLine{}, errors.New("no method specified in request")
+		return RequestLine{}, 0, errors.New("no method specified in request")
 	}
 	// ensure that method is composed entirely of uppercase letters
 	for _, c := range method {
 		if !unicode.IsUpper(c) {
-			return RequestLine{}, errors.New("invalid method format")
+			return RequestLine{}, 0, errors.New("invalid method format")
 		}
 	}
 
 	// ensure that the HTTP version is strictly HTTP/1.1
 	httpVersion := requestLineParts[2]
 	if httpVersion != "HTTP/1.1" {
-		return RequestLine{}, errors.New("unsupported HTTP version")
+		return RequestLine{}, 0, errors.New("unsupported HTTP version")
 	}
 
 	return RequestLine{
 		Method:        requestLineParts[0],
 		RequestTarget: requestLineParts[1],
 		HttpVersion:   strings.TrimPrefix(requestLineParts[2], "HTTP/"),
-	}, nil
+	}, idx + 2, nil
+}
+
+func (r *Request) parse(data []byte) (int, error) {
+	// accepts unparsed bytes
+
+	switch r.state {
+		case requestStateDone:
+			return 0, errors.New("error: trying to read data in a done state")
+		case requestStateInitialized:
+			requestLine, bytesRead, err := parseRequestLine(data)
+			if err != nil {
+				return 0, err
+			}
+			if bytesRead == 0 {
+				return 0, nil
+			}
+			r.RequestLine = requestLine
+			r.state = requestStateDone
+			return bytesRead, nil
+		default:
+			return 0, errors.New("error: unknown state")
+	}
 }
