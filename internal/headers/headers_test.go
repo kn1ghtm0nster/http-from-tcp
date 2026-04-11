@@ -102,4 +102,13 @@ func TestHeadersParse(t *testing.T) {
 	assert.Equal(t, 0, n)
 	assert.False(t, done)
 
+	// Test: Same header key repeated is normalized into a single string value 
+	headers = NewHeaders()
+	headers["x-custom-header"] = "first-value"
+	data = []byte("X-Custom-Header: second-value\r\n\r\n")
+	n, done, err = headers.Parse(data)
+	require.NoError(t, err)
+	require.NotNil(t, headers)
+	assert.Equal(t, "first-value, second-value", headers["x-custom-header"])
+	assert.False(t, done)
 }

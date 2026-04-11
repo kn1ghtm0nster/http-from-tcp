@@ -43,6 +43,11 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 
 	// normalize the header key to lowercase
 	key = strings.ToLower(key)
-	h[key] = value
+	// if the header key already exists, append the new value to the existing value separated by a comma
+	if existingValue, ok := h[key]; ok {
+		h[key] = existingValue + ", " + value
+	} else {
+		h[key] = value
+	}
 	return idx + 2, false, nil
 }
