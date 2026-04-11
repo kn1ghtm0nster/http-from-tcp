@@ -36,6 +36,13 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, errors.New("invalid key format")
 	}
 
+	// Key cannot contain special characters
+	if strings.ContainsAny(key, " !@#$%^&*()[]{}<>?/\\|`~;\"'") {
+		return 0, false, errors.New("invalid character in header key")
+	}
+
+	// normalize the header key to lowercase
+	key = strings.ToLower(key)
 	h[key] = value
 	return idx + 2, false, nil
 }
