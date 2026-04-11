@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 	"unicode"
+
+	"github.com/kn1ghtm0nster/http-from-tcp/internal/headers"
 )
 
 const bufferSize = 8
@@ -13,12 +15,14 @@ const bufferSize = 8
 const (
 	requestStateInitialized requestState = iota
 	requestStateDone
+	requestStateParsingHeaders
 )
 
 type requestState int
 
 type Request struct {
 	RequestLine RequestLine
+	Headers 	headers.Headers
 	state       requestState
 }
 
@@ -33,6 +37,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	readToIndex := 0
 	req := &Request{
 		state: requestStateInitialized,
+		Headers: headers.NewHeaders(),
 	}
 
 	for req.state != requestStateDone {
@@ -45,9 +50,11 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		// read from the reader into the buffer starting at the current read index
 		nextIdx, err := reader.Read(buf[readToIndex:])
 		if err != nil {
-			if err == io.EOF {
-				req.state = requestStateDone
-				break
+			if err == io.EOF && req.state == requestStateDone {
+				return req, nil
+			}
+			if err == io.EOF && req.state != requestStateDone {
+				return nil, errors.New("incomplete request")
 			}
 			return nil, err
 		}
@@ -103,8 +110,23 @@ func parseRequestLine(data []byte) (RequestLine, int, error) {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
-	// accepts unparsed bytes
+	totalBytesParsed := 0
 
+	// continue parsing the headers until the request is completely parsed
+	for r.state != requestStateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return totalBytesParsed, err
+		}
+		if n == 0 {
+			break
+		}
+		totalBytesParsed += n
+	}
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.state {
 		case requestStateDone:
 			return 0, errors.New("error: trying to read data in a done state")
@@ -117,8 +139,18 @@ func (r *Request) parse(data []byte) (int, error) {
 				return 0, nil
 			}
 			r.RequestLine = requestLine
-			r.state = requestStateDone
+			r.state = requestStateParsingHeaders
 			return bytesRead, nil
+		case requestStateParsingHeaders:
+			n, done, err := r.Headers.Parse(data)
+			if err != nil {
+				return 0, err
+			}
+			if done {
+				r.state = requestStateDone
+				return n, nil
+			}
+			return n, nil
 		default:
 			return 0, errors.New("error: unknown state")
 	}
