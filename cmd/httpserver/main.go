@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -14,21 +13,61 @@ import (
 
 const port = 42069
 
-var handler = func(w io.Writer, req *request.Request) *server.HandlerError {
+const responseBody400 = `<html>
+  <head>
+    <title>400 Bad Request</title>
+  </head>
+  <body>
+    <h1>Bad Request</h1>
+    <p>Your request honestly kinda sucked.</p>
+  </body>
+</html>
+`
+const responseBody500 = `<html>
+  <head>
+    <title>500 Internal Server Error</title>
+  </head>
+  <body>
+    <h1>Internal Server Error</h1>
+    <p>Okay, you know what? This one is on me.</p>
+  </body>
+</html>
+`
+
+const responseBody200 = `<html>
+  <head>
+    <title>200 OK</title>
+  </head>
+  <body>
+    <h1>Success!</h1>
+    <p>Your request was an absolute banger.</p>
+  </body>
+</html>
+`
+
+var handler = func(r *response.Writer, req *request.Request) {
 	switch req.RequestLine.RequestTarget {
 		case "/yourproblem":
-			return &server.HandlerError{
-				StatusCode: response.BadRequest,
-				Message:    "Your problem is not my problem\n",
-			}
+			responseBody := responseBody400
+			r.WriteStatusLine(response.BadRequest)
+			responseHeaders := response.GetDefaultHeaders(len(responseBody))
+			responseHeaders.Override("Content-Type", "text/html")
+			r.WriteHeaders(responseHeaders)
+			r.WriteBody([]byte(responseBody))
 		case "/myproblem":
-			return &server.HandlerError{
-				StatusCode: response.InternalServerError,
-				Message:    "Woopsie, my bad\n",
-			}
+			responseBody := responseBody500
+			r.WriteStatusLine(response.InternalServerError)
+			responseHeaders := response.GetDefaultHeaders(len(responseBody))
+			responseHeaders.Override("Content-Type", "text/html")
+			r.WriteHeaders(responseHeaders)
+			r.WriteBody([]byte(responseBody))
 		default:
-			w.Write([]byte("All good, frfr\n"))
-			return nil
+			responseBody := responseBody200
+			r.WriteStatusLine(response.StatusOK)
+			responseHeaders := response.GetDefaultHeaders(len(responseBody))
+			responseHeaders.Override("Content-Type", "text/html")
+			r.WriteHeaders(responseHeaders)
+			r.WriteBody([]byte(responseBody))
 	}
 }
 

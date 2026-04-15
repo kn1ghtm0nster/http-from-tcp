@@ -1,7 +1,6 @@
 package response
 
 import (
-	"io"
 	"strconv"
 
 	"github.com/kn1ghtm0nster/http-from-tcp/internal/headers"
@@ -15,7 +14,7 @@ const (
 	InternalServerError StatusCode = 500
 )
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func getStatusLine(statusCode StatusCode) []byte {
 	// maps the given status code to the correct reason phrase
 	var reasonPhrase string
 	switch statusCode {
@@ -29,9 +28,7 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 		reasonPhrase = ""
 	}
 
-	_, err := w.Write([]byte("HTTP/1.1 " + strconv.Itoa(int(statusCode)) + " " + reasonPhrase + "\r\n"))
-
-	return err
+	return []byte("HTTP/1.1 " + strconv.Itoa(int(statusCode)) + " " + reasonPhrase + "\r\n")
 }
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
@@ -40,15 +37,4 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 		"Connection": "close",
 		"Content-Type": "text/plain",
 	}
-}
-
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
-	for k, v := range headers {
-		_, err := w.Write([]byte(k + ": " + v + "\r\n"))
-		if err != nil {
-			return err
-		}
-	}
-	_, err := w.Write([]byte("\r\n"))
-	return err
 }
