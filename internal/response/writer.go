@@ -13,6 +13,7 @@ const (
 	WriterStateReady writerState = iota
 	WriterStateHeaders
 	WriterStateBody
+	WriterStateTrailers
 )
 
 type Writer struct {

@@ -70,9 +70,28 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 		return 0, errors.New("cannot write chunked body done in current state")
 	}
 
-	endHexNumber, err := w.w.Write([]byte("0\r\n\r\n"))
+	endHexNumber, err := w.w.Write([]byte("0\r\n"))
 	if err != nil {
 		return 0, err
 	}
+	w.state = WriterStateTrailers
 	return endHexNumber, nil
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.state != WriterStateTrailers {
+		return errors.New("cannot write trailers in current state")
+	}
+
+	for k, v := range h {
+		_, err := w.w.Write([]byte(k + ": " + v + "\r\n"))
+		if err != nil {
+			return err
+		}
+	}
+	_, err := w.w.Write([]byte("\r\n"))
+	if err != nil {
+		return err
+	}
+	return nil
 }

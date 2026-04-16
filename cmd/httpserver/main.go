@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -60,16 +62,19 @@ var handler = func(r *response.Writer, req *request.Request) {
 		}
 		defer res.Body.Close()
 		r.WriteStatusLine(response.StatusOK)
-		headers := headers.NewHeaders()
-		headers["Content-Type"] = res.Header.Get("Content-Type")
-		headers["Transfer-Encoding"] = "chunked"
-		r.WriteHeaders(headers)
+		headerMap:= headers.NewHeaders()
+		headerMap["Trailer"] = "X-Content-SHA256, X-Content-Length"
+		headerMap["Content-Type"] = res.Header.Get("Content-Type")
+		headerMap["Transfer-Encoding"] = "chunked"
+		r.WriteHeaders(headerMap)
 		readBuffer := make([]byte, 1024)
+		var fullBody []byte
 
 		for {
 			num, err := res.Body.Read(readBuffer)
 			if num > 0 {
 				_, writerErr := r.WriteChunkedBody(readBuffer[:num])
+				fullBody = append(fullBody, readBuffer[:num]...)
 				if writerErr != nil {
 					log.Printf("Error writing chunked body: %v", writerErr)
 					return
@@ -85,6 +90,12 @@ var handler = func(r *response.Writer, req *request.Request) {
 		}
 
 		_, err = r.WriteChunkedBodyDone()
+		bodySHA :=sha256.Sum256(fullBody)
+		hexStr := fmt.Sprintf("%x", bodySHA)
+		trailerHeaders := headers.NewHeaders()
+		trailerHeaders["X-Content-SHA256"] = hexStr
+		trailerHeaders["X-Content-Length"] = fmt.Sprintf("%d", len(fullBody))
+		r.WriteTrailers(trailerHeaders)
 		if err != nil {
 			log.Printf("Error finishing chunked body: %v", err)
 		}
