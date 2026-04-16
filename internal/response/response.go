@@ -1,6 +1,8 @@
 package response
 
 import (
+	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/kn1ghtm0nster/http-from-tcp/internal/headers"
@@ -37,4 +39,40 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 		"Connection": "close",
 		"Content-Type": "text/plain",
 	}
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.state != WriterStateBody {
+		return 0, errors.New("cannot write chunked body in current state")
+	}
+
+	hexNumber, err := fmt.Fprintf(w.w, "%x\r\n", len(p))
+	if err != nil {
+		return 0, err
+	}
+
+	pBytes, err := w.w.Write(p)
+	if err != nil {
+		return 0, err
+	}
+
+	endBytes, err := w.w.Write([]byte("\r\n"))
+	if err != nil {
+		return 0, err
+	}
+
+	return hexNumber + pBytes + endBytes, nil
+	
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.state != WriterStateBody {
+		return 0, errors.New("cannot write chunked body done in current state")
+	}
+
+	endHexNumber, err := w.w.Write([]byte("0\r\n\r\n"))
+	if err != nil {
+		return 0, err
+	}
+	return endHexNumber, nil
 }

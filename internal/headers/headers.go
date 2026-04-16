@@ -57,6 +57,10 @@ func (h Headers) Get(key string) (string, bool) {
 	return value, ok
 }
 
+func (h Headers) Delete(key string) {
+	delete(h, strings.ToLower(key))
+}
+
 func (h Headers) Override(key, value string) {
 	h[key] = value
 }

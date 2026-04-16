@@ -1,11 +1,15 @@
 package main
 
 import (
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"github.com/kn1ghtm0nster/http-from-tcp/internal/headers"
 	"github.com/kn1ghtm0nster/http-from-tcp/internal/request"
 	"github.com/kn1ghtm0nster/http-from-tcp/internal/response"
 	"github.com/kn1ghtm0nster/http-from-tcp/internal/server"
@@ -46,6 +50,47 @@ const responseBody200 = `<html>
 `
 
 var handler = func(r *response.Writer, req *request.Request) {
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/") {
+		httpBinPath := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin/")
+		res, err := http.Get("https://httpbin.org/" + httpBinPath)
+		if err != nil {
+			log.Printf("Error fetching from httpbin: %v", err)
+			res.StatusCode = http.StatusBadRequest
+			return
+		}
+		defer res.Body.Close()
+		r.WriteStatusLine(response.StatusOK)
+		headers := headers.NewHeaders()
+		headers["Content-Type"] = res.Header.Get("Content-Type")
+		headers["Transfer-Encoding"] = "chunked"
+		r.WriteHeaders(headers)
+		readBuffer := make([]byte, 1024)
+
+		for {
+			num, err := res.Body.Read(readBuffer)
+			if num > 0 {
+				_, writerErr := r.WriteChunkedBody(readBuffer[:num])
+				if writerErr != nil {
+					log.Printf("Error writing chunked body: %v", writerErr)
+					return
+				}
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Printf("Error reading from httpbin response body: %v", err)
+				return
+			}
+		}
+
+		_, err = r.WriteChunkedBodyDone()
+		if err != nil {
+			log.Printf("Error finishing chunked body: %v", err)
+		}
+		return
+	}
+
 	switch req.RequestLine.RequestTarget {
 		case "/yourproblem":
 			responseBody := responseBody400
