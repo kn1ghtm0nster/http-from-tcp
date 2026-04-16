@@ -3,3 +3,4 @@ http-from-tcp
 
 # environment variables
 .env
+assets/
