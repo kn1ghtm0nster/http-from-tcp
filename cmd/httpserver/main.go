@@ -117,6 +117,23 @@ var handler = func(r *response.Writer, req *request.Request) {
 			responseHeaders.Override("Content-Type", "text/html")
 			r.WriteHeaders(responseHeaders)
 			r.WriteBody([]byte(responseBody))
+		case "/video":
+			videoPath := "assets/vim.mp4"
+			videoBytes, err := os.ReadFile(videoPath)
+			if err != nil {
+				log.Printf("Error reading video file %s: %v", videoPath, err)
+				r.WriteStatusLine(response.InternalServerError)
+				responseHeaders := response.GetDefaultHeaders(0)
+				responseHeaders.Override("Content-Type", "text/html")
+				r.WriteHeaders(responseHeaders)
+				r.WriteBody([]byte(responseBody500))
+				return
+			}
+			r.WriteStatusLine(response.StatusOK)
+			responseHeaders := response.GetDefaultHeaders(len(videoBytes))
+			responseHeaders.Override("Content-Type", "video/mp4")
+			r.WriteHeaders(responseHeaders)
+			r.WriteBody(videoBytes)
 		default:
 			responseBody := responseBody200
 			r.WriteStatusLine(response.StatusOK)
